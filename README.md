@@ -2,6 +2,10 @@
 
 A collection of utility nodes for ComfyUI focused on text and LLM-related operations. Currently includes weighted dictionary nodes for dynamic text generation and manipulation.
 
+## Examples
+
+![alt text](<Screenshot from 2025-01-04 07-01-47.png>)
+
 ## Features
 
 ### Weighted Dictionary Nodes

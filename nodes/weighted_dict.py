@@ -236,27 +236,24 @@ class WeightedDictSelectGroup:
         return [k.strip('"') for k in keys if k.strip()]
 
     def select_group(self, weighted_dict, allow_duplicates=False, output_format="simple", selected_keys=""):
-        """Select a group of items from the weighted dictionary.
-        
-        Args:
-            weighted_dict: Dictionary containing weighted items
-            allow_duplicates: Whether to allow duplicate selections
-            output_format: Desired output format ('simple' or 'weighted_text')
-            selected_keys: String of specific keys to select
-            
-        Returns:
-            tuple: (formatted_output, selected_dict)
-                - formatted_output: String of formatted selections
-                - selected_dict: Dictionary of selected items
-        """
+        """Select a group of items from the weighted dictionary."""
         if not selected_keys or selected_keys.strip() == "" or all(c in ",; " for c in selected_keys):
             raise ValueError("Selected keys must be provided")
             
+        # Extract the correct dictionary structure
+        items = weighted_dict.get("items", {})
+        weights = weighted_dict.get("weights", {})
+        
+        # Add validation for empty dictionary
+        if not items:
+            raise ValueError("Cannot select from empty dictionary")
+        
         # Parse and validate specific keys
         parsed_keys = self._parse_key_string(selected_keys)
-        invalid_keys = [k for k in parsed_keys if k not in weighted_dict]
+        invalid_keys = [k for k in parsed_keys if k not in items]  # Check against items dictionary
         if invalid_keys:
-            raise ValueError(f"Invalid key(s) found in selection: {', '.join(invalid_keys)}")
+            available_keys = ", ".join(items.keys())
+            raise ValueError(f"Invalid key(s) found in selection: {', '.join(invalid_keys)}. Available keys are: {available_keys}")
         
         # Handle duplicates
         if not allow_duplicates:
@@ -269,9 +266,13 @@ class WeightedDictSelectGroup:
             # For duplicates, create unique keys by appending an index
             if allow_duplicates and key in selected_dict:
                 new_key = f"{key}_{i}"
-                selected_dict[new_key] = weighted_dict[key]
             else:
-                selected_dict[key] = weighted_dict[key]
+                new_key = key
+                
+            selected_dict[new_key] = {
+                "value": items[key],
+                "weight": weights[key]
+            }
         
         # Format output
         formatted_output = []
