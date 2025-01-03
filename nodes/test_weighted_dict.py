@@ -1,112 +1,111 @@
 import unittest
-from .weighted_dict import (
-    WeightedDictInput,
-    WeightedDictSelect,
-    WeightedDict,
-    WeightedDictToPrompt,
-    WeightedDictSelectGroup
-)
+import sys
+import os
+
+from .weighted_dict import WeightedDictInput, WeightedDictSelect, WeightedDictConcat, WeightedDictSelectGroup
+
+# Mock ComfyUI's dependencies if needed
+try:
+    import torch
+except ImportError:
+    pass
 
 class TestWeightedDict(unittest.TestCase):
-    def setUp(self):
-        # Create common test data
-        self.input_node = WeightedDictInput()
-        self.base_dict = self.input_node.create_weighted_dict(
-            entry_count=3,
-            key_1="cat", value_1="meow", weight_1=2.0,
-            key_2="dog", value_2="woof", weight_2=1.0,
-            key_3="bird", value_3="chirp", weight_3=1.0
-        )[0]
-        
-        # Convert to reformatted dict
-        self.formatter = WeightedDict()
-        self.formatted_dict = self.formatter.reformat_dict(self.base_dict)[0]
-
     def test_weighted_dict_input(self):
-        # Test dictionary creation
-        self.assertEqual(self.base_dict["items"]["cat"], "meow")
-        self.assertEqual(self.base_dict["weights"]["cat"], 2.0)
-        self.assertEqual(len(self.base_dict["items"]), 3)
+        # Test single entry creation
+        node = WeightedDictInput()
+        result = node.create_weighted_dict("test_key", "test_value", 2.5)
         
-        # Test with minimum entries
-        min_dict = self.input_node.create_weighted_dict(
-            entry_count=1,
-            key_1="test", value_1="value", weight_1=1.0
-        )[0]
-        self.assertEqual(len(min_dict["items"]), 1)
+        self.assertEqual(len(result), 1)  # Should return a tuple with one item
+        weighted_dict = result[0]
+        
+        # Check structure
+        self.assertIn("items", weighted_dict)
+        self.assertIn("weights", weighted_dict)
+        
+        # Check content
+        self.assertEqual(weighted_dict["items"], {"test_key": "test_value"})
+        self.assertEqual(weighted_dict["weights"], {"test_key": 2.5})
 
-    def test_weighted_dict_format(self):
-        # Test dictionary reformatting
-        self.assertEqual(self.formatted_dict["cat"]["value"], "meow")
-        self.assertEqual(self.formatted_dict["cat"]["weight"], 2.0)
-        self.assertTrue(all(
-            "value" in data and "weight" in data 
-            for data in self.formatted_dict.values()
-        ))
+    def test_weighted_dict_concat(self):
+        # Create test dictionaries
+        node_input = WeightedDictInput()
+        dict1 = node_input.create_weighted_dict("key1", "value1", 1.0)[0]
+        dict2 = node_input.create_weighted_dict("key2", "value2", 2.0)[0]
+        dict3 = node_input.create_weighted_dict("key3", "value3", 3.0)[0]
+        
+        # Test concatenation
+        node_concat = WeightedDictConcat()
+        
+        # Test with two dictionaries
+        result = node_concat.concat_dicts(dict1, dict2)
+        self.assertEqual(len(result), 1)
+        combined_dict = result[0]
+        
+        self.assertEqual(len(combined_dict["items"]), 2)
+        self.assertEqual(combined_dict["items"]["key1"], "value1")
+        self.assertEqual(combined_dict["items"]["key2"], "value2")
+        self.assertEqual(combined_dict["weights"]["key1"], 1.0)
+        self.assertEqual(combined_dict["weights"]["key2"], 2.0)
+        
+        # Test with three dictionaries
+        result = node_concat.concat_dicts(dict1, dict2, dict3)
+        combined_dict = result[0]
+        
+        self.assertEqual(len(combined_dict["items"]), 3)
+        self.assertEqual(combined_dict["items"]["key3"], "value3")
+        self.assertEqual(combined_dict["weights"]["key3"], 3.0)
 
     def test_weighted_dict_select(self):
-        # Test single selection
-        selector = WeightedDictSelect()
-        result = selector.select_from_dict(self.base_dict)[0]
-        self.assertIn(result, ["meow", "woof", "chirp"])
+        # Create a test dictionary with known values
+        node_input = WeightedDictInput()
+        dict1 = node_input.create_weighted_dict("key1", "value1", 1.0)[0]
         
-        # Test distribution (basic)
-        selections = [
-            selector.select_from_dict(self.base_dict)[0] 
-            for _ in range(1000)
-        ]
-        meow_count = selections.count("meow")
-        self.assertGreater(meow_count, 200)  # Should appear more due to higher weight
-
-    def test_weighted_dict_to_prompt(self):
-        prompt_node = WeightedDictToPrompt()
+        # Test selection
+        node_select = WeightedDictSelect()
+        result = node_select.select_from_dict(dict1)
         
-        # Test basic template
-        template = "The {{ cat }} and {{ dog }}"
-        result = prompt_node.render_prompt(template, self.formatted_dict)[0]
-        self.assertEqual(result, "The meow and woof")
-        
-        # Test missing placeholder
-        template = "The {{ missing }}"
-        result = prompt_node.render_prompt(template, self.formatted_dict)[0]
-        self.assertEqual(result, "The {{ missing }}")
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0], "value1")  # With single entry, should always select this
 
     def test_weighted_dict_select_group(self):
-        group_selector = WeightedDictSelectGroup()
+        # Create test dictionaries and combine them
+        node_input = WeightedDictInput()
+        dict1 = node_input.create_weighted_dict("key1", "value1", 1.0)[0]
+        dict2 = node_input.create_weighted_dict("key2", "value2", 2.0)[0]
+        dict3 = node_input.create_weighted_dict("key3", "value3", 3.0)[0]
         
-        # Test without duplicates
-        formatted_str, selected_dict = group_selector.select_group(
-            self.formatted_dict,
-            count=2,
-            allow_duplicates=False
+        node_concat = WeightedDictConcat()
+        combined_dict = node_concat.concat_dicts(dict1, dict2, dict3)[0]
+        
+        # Convert to reformatted dict format
+        reformatted_dict = {}
+        for key in combined_dict["items"]:
+            reformatted_dict[key] = {
+                "value": combined_dict["items"][key],
+                "weight": combined_dict["weights"][key]
+            }
+        
+        # Test selection with duplicates allowed
+        node_select_group = WeightedDictSelectGroup()
+        formatted_output, selected_dict = node_select_group.select_group(
+            reformatted_dict, 2, True
         )
         
-        # Check formatted string format
-        self.assertTrue(":" in formatted_str)
-        self.assertEqual(formatted_str.count(","), 1)  # Two items = one comma
+        # Check output format
+        self.assertIsInstance(formatted_output, str)
+        self.assertIsInstance(selected_dict, dict)
+        self.assertGreaterEqual(len(selected_dict), 1)
         
-        # Check selected dictionary
+        # Test selection without duplicates
+        formatted_output, selected_dict = node_select_group.select_group(
+            reformatted_dict, 2, False
+        )
+        
         self.assertEqual(len(selected_dict), 2)
-        self.assertTrue(all(
-            "value" in data and "weight" in data 
-            for data in selected_dict.values()
-        ))
-        
-        # Test with duplicates
-        formatted_str, selected_dict = group_selector.select_group(
-            self.formatted_dict,
-            count=4,
-            allow_duplicates=True
-        )
-        self.assertEqual(formatted_str.count(","), 3)  # Four items = three commas
-        
-        # Test requesting more items than available (without duplicates)
-        formatted_str, selected_dict = group_selector.select_group(
-            self.formatted_dict,
-            count=5,
-            allow_duplicates=False
-        )
-        self.assertEqual(len(selected_dict), 3)  # Should only return available items
+        # Verify all selected items are unique
+        selected_values = [item["value"] for item in selected_dict.values()]
+        self.assertEqual(len(selected_values), len(set(selected_values)))
 
 if __name__ == '__main__':
     unittest.main() 

@@ -6,12 +6,9 @@ class WeightedDictInput:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "entry_count": ("INT", {"default": 3, "min": 1, "max": 10}),
-            },
-            "optional": {
-                **{f"key_{i+1}": ("STRING", {"default": f"key{i+1}"}) for i in range(10)},
-                **{f"value_{i+1}": ("STRING", {"default": f"value{i+1}"}) for i in range(10)},
-                **{f"weight_{i+1}": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 100.0}) for i in range(10)},
+                "key": ("STRING", {"default": "key1"}),
+                "value": ("STRING", {"default": "value1"}),
+                "weight": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 100.0}),
             }
         }
     
@@ -19,25 +16,11 @@ class WeightedDictInput:
     FUNCTION = "create_weighted_dict"
     CATEGORY = "utils"
 
-    def create_weighted_dict(self, entry_count, **kwargs) -> tuple[Dict[str, Any]]:
-        keys = []
-        values = []
-        weights = []
-        
-        # Collect the specified number of entries
-        for i in range(entry_count):
-            key = kwargs.get(f"key_{i+1}", f"key{i+1}")
-            value = kwargs.get(f"value_{i+1}", f"value{i+1}")
-            weight = kwargs.get(f"weight_{i+1}", 1.0)
-            
-            keys.append(key)
-            values.append(value)
-            weights.append(float(weight))
-
+    def create_weighted_dict(self, key, value, weight) -> tuple[Dict[str, Any]]:
         # Create the weighted dictionary
         weighted_dict = {
-            "items": dict(zip(keys, values)),
-            "weights": dict(zip(keys, weights))
+            "items": {key: value},
+            "weights": {key: float(weight)}
         }
 
         return (weighted_dict,)
@@ -182,3 +165,41 @@ class WeightedDictSelectGroup:
         formatted_output = ", ".join(formatted_selections)
         
         return (formatted_output, selected_dict)
+
+class WeightedDictConcat:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "dict1": ("DICT",),
+            },
+            "optional": {
+                "dict2": ("DICT",),
+                "dict3": ("DICT",),
+                "dict4": ("DICT",),
+                "dict5": ("DICT",),
+            }
+        }
+    
+    RETURN_TYPES = ("DICT",)
+    FUNCTION = "concat_dicts"
+    CATEGORY = "utils"
+
+    def concat_dicts(self, dict1, dict2=None, dict3=None, dict4=None, dict5=None) -> tuple[Dict[str, Any]]:
+        # Start with the first dictionary
+        combined_items = dict1["items"].copy()
+        combined_weights = dict1["weights"].copy()
+        
+        # Add other dictionaries if they exist
+        for d in [dict2, dict3, dict4, dict5]:
+            if d is not None:
+                combined_items.update(d["items"])
+                combined_weights.update(d["weights"])
+        
+        # Create the combined weighted dictionary
+        weighted_dict = {
+            "items": combined_items,
+            "weights": combined_weights
+        }
+
+        return (weighted_dict,)
