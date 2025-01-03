@@ -31,6 +31,7 @@ class WeightedDictSelect:
         return {
             "required": {
                 "weighted_dict": ("DICT",),
+                "key": ("STRING", {"default": ""}),
             },
         }
     
@@ -38,18 +39,14 @@ class WeightedDictSelect:
     FUNCTION = "select_from_dict"
     CATEGORY = "utils"
 
-    def select_from_dict(self, weighted_dict: Dict[str, Any]) -> tuple[str]:
+    def select_from_dict(self, weighted_dict: Dict[str, Any], key: str) -> tuple[str]:
         items = weighted_dict["items"]
-        weights = weighted_dict["weights"]
         
-        # Get keys and their corresponding weights
-        keys = list(items.keys())
-        weight_values = [weights[k] for k in keys]
-        
-        # Select a random key based on weights
-        selected_key = random.choices(keys, weights=weight_values, k=1)[0]
-        selected_value = items[selected_key]
-        
+        # Get value for the specified key
+        if key not in items:
+            raise ValueError(f"Key '{key}' not found in weighted dictionary")
+            
+        selected_value = items[key]
         return (selected_value,)
 
 class WeightedDict:
@@ -100,11 +97,30 @@ class WeightedDictToPrompt:
         # Start with the template
         rendered = template
         
-        # Replace each {{key}} with its corresponding value
-        for key, data in weighted_dict.items():
-            placeholder = f"{{{{ {key} }}}}"
-            value = data["value"]
-            rendered = rendered.replace(placeholder, str(value))
+        # Check dictionary format and handle accordingly
+        if "items" in weighted_dict:
+            # Handle raw format
+            items = weighted_dict["items"]
+            for key, value in items.items():
+                # Try both with and without spaces
+                placeholders = [
+                    f"{{{{ {key} }}}}",  # with spaces
+                    f"{{{{{key}}}}}"      # without spaces
+                ]
+                for placeholder in placeholders:
+                    if placeholder in rendered:
+                        rendered = rendered.replace(placeholder, str(value))
+        else:
+            # Handle reformatted format
+            for key, data in weighted_dict.items():
+                placeholders = [
+                    f"{{{{ {key} }}}}",  # with spaces
+                    f"{{{{{key}}}}}"      # without spaces
+                ]
+                value = data["value"] if isinstance(data, dict) and "value" in data else str(data)
+                for placeholder in placeholders:
+                    if placeholder in rendered:
+                        rendered = rendered.replace(placeholder, str(value))
             
         return (rendered,)
 
@@ -117,6 +133,13 @@ class WeightedDictSelectGroup:
                 "count": ("INT", {"default": 3, "min": 1, "max": 10}),
                 "allow_duplicates": ("BOOLEAN", {"default": False}),
             },
+            "optional": {
+                "selected_keys": ("STRING", {
+                    "multiline": False,
+                    "default": "",
+                    "placeholder": "key1,key2,key3"
+                }),
+            }
         }
     
     RETURN_TYPES = ("STRING", "DICT")
@@ -124,47 +147,67 @@ class WeightedDictSelectGroup:
     FUNCTION = "select_group"
     CATEGORY = "utils"
 
-    def select_group(self, weighted_dict: Dict[str, Any], count: int, allow_duplicates: bool) -> tuple[str, Dict[str, Any]]:
-        # Get keys and their corresponding values/weights
-        keys = list(weighted_dict.keys())
-        weight_values = [weighted_dict[k]["weight"] for k in keys]
+    def _parse_key_string(self, key_string: str) -> list[str]:
+        """Parse a string of keys into a list, handling various formats."""
+        if not key_string or key_string is None:
+            return []
+            
+        # First split by comma or semicolon
+        parts = []
+        current = []
+        in_quotes = False
         
-        # Select multiple keys based on weights
-        if allow_duplicates:
-            selected_keys = random.choices(keys, weights=weight_values, k=count)
+        for char in key_string:
+            if char == '"' or char == "'":
+                in_quotes = not in_quotes
+            elif char in [',', ';'] and not in_quotes:
+                parts.append(''.join(current))
+                current = []
+            else:
+                current.append(char)
+                
+        # Add the last part
+        if current:
+            parts.append(''.join(current))
+            
+        # Clean up each part
+        cleaned_keys = []
+        for part in parts:
+            # Remove quotes, whitespace, and skip empty strings
+            key = part.strip(' \'"')
+            if key:  # Only add non-empty keys
+                cleaned_keys.append(key)
+                
+        return cleaned_keys
+
+    def select_group(self, weighted_dict, count, allow_duplicates=False, key_string=None):
+        if not key_string or key_string.strip() == "" or all(c in ",; " for c in key_string):
+            # Fall back to random selection when key_string is empty or contains only separators
+            keys = list(weighted_dict.keys())
+            if not allow_duplicates:
+                count = min(count, len(keys))
+            selected_keys = random.sample(keys, count) if not allow_duplicates else [random.choice(keys) for _ in range(count)]
         else:
-            # Ensure we don't request more items than available
-            count = min(count, len(keys))
-            selected_keys = []
-            remaining_keys = keys.copy()
-            remaining_weights = weight_values.copy()
+            # Handle specific key selection
+            selected_keys = self._parse_key_string(key_string)
             
-            for _ in range(count):
-                if not remaining_keys:
-                    break
-                # Select one key at a time
-                idx = random.choices(range(len(remaining_keys)), weights=remaining_weights, k=1)[0]
-                selected_keys.append(remaining_keys.pop(idx))
-                remaining_weights.pop(idx)
-        
-        # Create formatted string output
-        formatted_selections = []
-        selected_dict = {}
-        
-        for key in selected_keys:
-            value = weighted_dict[key]["value"]
-            weight = weighted_dict[key]["weight"]
-            formatted_selections.append(f"{value}:{weight}")
+            # Validate all keys exist before processing
+            invalid_keys = [k for k in selected_keys if k not in weighted_dict]
+            if invalid_keys:
+                raise ValueError(f"Invalid key(s) found in selection: {', '.join(invalid_keys)}")
             
-            # Add to selected dictionary
-            selected_dict[key] = {
-                "value": value,
-                "weight": weight
-            }
+            if not allow_duplicates:
+                selected_keys = list(dict.fromkeys(selected_keys))
+            selected_keys = selected_keys[:count]
+
+        selected_dict = {k: weighted_dict[k] for k in selected_keys}
         
-        formatted_output = ", ".join(formatted_selections)
+        # Format output
+        formatted_output = ""
+        for key in selected_dict:
+            formatted_output += f"{selected_dict[key]['value']}\n"
         
-        return (formatted_output, selected_dict)
+        return formatted_output.strip(), selected_dict
 
 class WeightedDictConcat:
     @classmethod

@@ -137,11 +137,10 @@ formatted_str, selected_dict = group_selector.select_group(
 
 ## Testing
 
-Run the test suite:
+Run the test suite from the project root:
 
 ```bash
-cd nodes
-python -m unittest test_weighted_dict.py
+python run_tests.py
 ```
 
 ## License

@@ -57,16 +57,45 @@ class TestWeightedDict(unittest.TestCase):
         self.assertEqual(combined_dict["weights"]["key3"], 3.0)
 
     def test_weighted_dict_select(self):
-        # Create a test dictionary with known values
+        # Create a test dictionary with multiple entries
         node_input = WeightedDictInput()
         dict1 = node_input.create_weighted_dict("key1", "value1", 1.0)[0]
+        dict2 = node_input.create_weighted_dict("key2", "value2", 2.0)[0]
+        
+        # Combine dictionaries
+        node_concat = WeightedDictConcat()
+        combined_dict = node_concat.concat_dicts(dict1, dict2)[0]
         
         # Test selection
         node_select = WeightedDictSelect()
-        result = node_select.select_from_dict(dict1)
         
+        # Test 1: Basic key selection
+        result = node_select.select_from_dict(combined_dict, "key1")
         self.assertEqual(len(result), 1)
-        self.assertEqual(result[0], "value1")  # With single entry, should always select this
+        self.assertEqual(result[0], "value1")
+        
+        result = node_select.select_from_dict(combined_dict, "key2")
+        self.assertEqual(result[0], "value2")
+        
+        # Test 2: Error handling for invalid key
+        with self.assertRaises(ValueError) as context:
+            node_select.select_from_dict(combined_dict, "nonexistent_key")
+        self.assertTrue("not found in weighted dictionary" in str(context.exception))
+        
+        # Test 3: Empty key handling
+        with self.assertRaises(ValueError) as context:
+            node_select.select_from_dict(combined_dict, "")
+        self.assertTrue("not found in weighted dictionary" in str(context.exception))
+        
+        # Test 4: Special characters in keys
+        special_dict = node_input.create_weighted_dict("key-with-hyphens", "special_value", 1.0)[0]
+        result = node_select.select_from_dict(special_dict, "key-with-hyphens")
+        self.assertEqual(result[0], "special_value")
+        
+        # Test 5: Unicode characters in keys and values
+        unicode_dict = node_input.create_weighted_dict("🔑", "值", 1.0)[0]
+        result = node_select.select_from_dict(unicode_dict, "🔑")
+        self.assertEqual(result[0], "值")
 
     def test_weighted_dict_select_group(self):
         # Create test dictionaries and combine them
@@ -86,26 +115,104 @@ class TestWeightedDict(unittest.TestCase):
                 "weight": combined_dict["weights"][key]
             }
         
-        # Test selection with duplicates allowed
         node_select_group = WeightedDictSelectGroup()
-        formatted_output, selected_dict = node_select_group.select_group(
-            reformatted_dict, 2, True
-        )
-        
-        # Check output format
-        self.assertIsInstance(formatted_output, str)
-        self.assertIsInstance(selected_dict, dict)
-        self.assertGreaterEqual(len(selected_dict), 1)
-        
-        # Test selection without duplicates
+
+        # Test 1: Random selection (original functionality)
         formatted_output, selected_dict = node_select_group.select_group(
             reformatted_dict, 2, False
         )
-        
         self.assertEqual(len(selected_dict), 2)
         # Verify all selected items are unique
         selected_values = [item["value"] for item in selected_dict.values()]
         self.assertEqual(len(selected_values), len(set(selected_values)))
+
+        # Test 2: Specific key selection
+        formatted_output, selected_dict = node_select_group.select_group(
+            reformatted_dict, 2, False, "key1,key2"
+        )
+        self.assertEqual(len(selected_dict), 2)
+        self.assertIn("key1", selected_dict)
+        self.assertIn("key2", selected_dict)
+
+        # Test 3: Various input formats
+        test_cases = [
+            ("key1, key2", ["key1", "key2"]),
+            ("key1;key2", ["key1", "key2"]),
+            ('  key1  ,  key2  ', ["key1", "key2"]),
+            ('"key1",key2', ["key1", "key2"]),
+            ('key1,,,key2', ["key1", "key2"]),
+            ('key1;; ;  key2', ["key1", "key2"]),
+        ]
+
+        for input_str, expected_keys in test_cases:
+            formatted_output, selected_dict = node_select_group.select_group(
+                reformatted_dict, 2, False, input_str
+            )
+            self.assertEqual(set(selected_dict.keys()), set(expected_keys))
+
+        # Test 4: Duplicates handling
+        formatted_output, selected_dict = node_select_group.select_group(
+            reformatted_dict, 3, True, "key1,key1,key1"
+        )
+        self.assertEqual(len(selected_dict), 1)  # Should only have one unique key
+        self.assertIn("key1", selected_dict)
+
+        formatted_output, selected_dict = node_select_group.select_group(
+            reformatted_dict, 3, False, "key1,key1,key2"
+        )
+        self.assertEqual(len(selected_dict), 2)  # Should have two unique keys
+        self.assertIn("key1", selected_dict)
+        self.assertIn("key2", selected_dict)
+
+        # Test 5: Count limiting
+        formatted_output, selected_dict = node_select_group.select_group(
+            reformatted_dict, 1, False, "key1,key2,key3"
+        )
+        self.assertEqual(len(selected_dict), 1)  # Should only select first key
+
+        # Test 6: Error handling
+        with self.assertRaises(ValueError) as context:
+            node_select_group.select_group(
+                reformatted_dict, 2, False, "key1,invalid_key"
+            )
+        self.assertIn("Invalid key", str(context.exception))
+
+        # Test 7: Empty input handling
+        for empty_input in ["", None, "   ", ",,,", ";;;"]:
+            formatted_output, selected_dict = node_select_group.select_group(
+                reformatted_dict, 2, False, empty_input
+            )
+            self.assertEqual(
+                len(selected_dict), 
+                2, 
+                f"Expected 2 random selections for empty input '{empty_input}', but got {len(selected_dict)}"
+            )
+            # Verify all selected items are from the original dict
+            for key in selected_dict:
+                self.assertIn(key, reformatted_dict)
+
+    def test_parse_key_string(self):
+        """Test the key string parsing functionality directly"""
+        node = WeightedDictSelectGroup()
+        
+        test_cases = [
+            ("key1,key2", ["key1", "key2"]),
+            ("key1;key2", ["key1", "key2"]),
+            ("  key1  ,  key2  ", ["key1", "key2"]),
+            ('"key1",key2', ["key1", "key2"]),
+            ("key1,,,key2", ["key1", "key2"]),
+            ("key1;; ;  key2", ["key1", "key2"]),
+            ("", []),
+            (None, []),
+            ("   ", []),
+            (",,,", []),
+            (";;;", []),
+            ('"key1,with,comma",key2', ["key1,with,comma", "key2"]),
+        ]
+
+        for input_str, expected in test_cases:
+            result = node._parse_key_string(input_str)
+            self.assertEqual(result, expected, f"Failed for input: {input_str}")
 
 if __name__ == '__main__':
     unittest.main() 
