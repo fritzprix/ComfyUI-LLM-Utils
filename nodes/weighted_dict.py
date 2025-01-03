@@ -32,6 +32,7 @@ class WeightedDictSelect:
             "required": {
                 "weighted_dict": ("DICT",),
                 "key": ("STRING", {"default": ""}),
+                "output_format": (["simple", "weighted_text"], {"default": "simple"}),
             },
         }
     
@@ -39,15 +40,24 @@ class WeightedDictSelect:
     FUNCTION = "select_from_dict"
     CATEGORY = "utils"
 
-    def select_from_dict(self, weighted_dict: Dict[str, Any], key: str) -> tuple[str]:
+    def _format_value(self, key, item_data, format_type):
+        """Helper method to format a single value based on format type."""
+        if format_type == "simple":
+            return item_data['value']
+        elif format_type == "weighted_text":
+            return f"({item_data['value']}:{item_data['weight']})"
+        return item_data['value']  # fallback to simple
+
+    def select_from_dict(self, weighted_dict: Dict[str, Any], key: str, output_format: str = "simple") -> tuple[str]:
         items = weighted_dict["items"]
         
         # Get value for the specified key
         if key not in items:
             raise ValueError(f"Key '{key}' not found in weighted dictionary")
             
-        selected_value = items[key]
-        return (selected_value,)
+        selected_item = items[key]
+        formatted_value = self._format_value(key, selected_item, output_format)
+        return (formatted_value,)
 
 class WeightedDict:
     @classmethod
@@ -132,6 +142,7 @@ class WeightedDictSelectGroup:
                 "weighted_dict": ("DICT",),
                 "count": ("INT", {"default": 3, "min": 1, "max": 10}),
                 "allow_duplicates": ("BOOLEAN", {"default": False}),
+                "output_format": (["simple", "weighted_text"], {"default": "simple"}),
             },
             "optional": {
                 "selected_keys": ("STRING", {
@@ -180,7 +191,15 @@ class WeightedDictSelectGroup:
                 
         return cleaned_keys
 
-    def select_group(self, weighted_dict, count, allow_duplicates=False, key_string=None):
+    def _format_value(self, key, item_data, format_type):
+        """Helper method to format a single value based on format type."""
+        if format_type == "simple":
+            return item_data['value']
+        elif format_type == "weighted_text":
+            return f"({item_data['value']}:{item_data['weight']})"
+        return item_data['value']  # fallback to simple
+
+    def select_group(self, weighted_dict, count, allow_duplicates=False, output_format="simple", key_string=None):
         if not key_string or key_string.strip() == "" or all(c in ",; " for c in key_string):
             # Fall back to random selection when key_string is empty or contains only separators
             keys = list(weighted_dict.keys())
@@ -205,7 +224,8 @@ class WeightedDictSelectGroup:
         # Format output
         formatted_output = ""
         for key in selected_dict:
-            formatted_output += f"{selected_dict[key]['value']}\n"
+            formatted_value = self._format_value(key, selected_dict[key], output_format)
+            formatted_output += f"{formatted_value}\n"
         
         return formatted_output.strip(), selected_dict
 

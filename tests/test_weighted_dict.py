@@ -214,5 +214,24 @@ class TestWeightedDict(unittest.TestCase):
             result = node._parse_key_string(input_str)
             self.assertEqual(result, expected, f"Failed for input: {input_str}")
 
+    def test_weighted_dict_select_group_formatting(self):
+        reformatted_dict = {
+            "key1": {"value": "value1", "weight": 0.5},
+            "key2": {"value": "value2", "weight": 0.3}
+        }
+        node_select_group = WeightedDictSelectGroup()
+
+        # Test simple format
+        formatted_output, selected_dict = node_select_group.select_group(
+            reformatted_dict, 2, False, "simple", "key1,key2"
+        )
+        self.assertEqual(formatted_output, "value1\nvalue2")
+
+        # Test weighted_text format
+        formatted_output, selected_dict = node_select_group.select_group(
+            reformatted_dict, 2, False, "weighted_text", "key1,key2"
+        )
+        self.assertEqual(formatted_output, "(value1:0.5)\n(value2:0.3)")
+
 if __name__ == '__main__':
     unittest.main() 
