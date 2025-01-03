@@ -3,7 +3,8 @@ from .nodes.weighted_dict import (
     WeightedDictSelect, 
     WeightedDict, 
     WeightedDictToPrompt,
-    WeightedDictSelectGroup
+    WeightedDictSelectGroup,
+    WeightedDictConcat
 )
 
 NODE_CLASS_MAPPINGS = {
@@ -11,7 +12,8 @@ NODE_CLASS_MAPPINGS = {
     "WeightedDictSelect": WeightedDictSelect,
     "WeightedDict": WeightedDict,
     "WeightedDictToPrompt": WeightedDictToPrompt,
-    "WeightedDictSelectGroup": WeightedDictSelectGroup
+    "WeightedDictSelectGroup": WeightedDictSelectGroup,
+    "WeightedDictConcat": WeightedDictConcat
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -19,7 +21,8 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "WeightedDictSelect": "Weighted Dict Select",
     "WeightedDict": "Weighted Dict",
     "WeightedDictToPrompt": "Weighted Dict To Prompt",
-    "WeightedDictSelectGroup": "Weighted Dict Select Group"
+    "WeightedDictSelectGroup": "Weighted Dict Select Group",
+    "WeightedDictConcat": "Weighted Dict Concat"
 }
 
 __all__ = ['NODE_CLASS_MAPPINGS', 'NODE_DISPLAY_NAME_MAPPINGS']
