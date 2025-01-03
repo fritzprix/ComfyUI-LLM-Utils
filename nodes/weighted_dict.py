@@ -174,6 +174,10 @@ class WeightedDictToPrompt:
         return (rendered,)
 
 class WeightedDictSelectGroup:
+    RETURN_TYPES = ("STRING", "DICT")
+    FUNCTION = "select_group"
+    CATEGORY = "dictionary"
+
     @classmethod
     def INPUT_TYPES(cls):
         """Define the input parameters for the node.
