@@ -1,0 +1,15 @@
+[project]
+name = "comfyui-llm-utils"
+description = "A collection of utility nodes for ComfyUI focused on text and LLM-related operations"
+version = "0.1.0"
+license = { file = "LICENSE" }
+dependencies = []
+
+[project.urls]
+Repository = "https://github.com/fritzprix/ComfyUI-LLM-Utils"
+
+#  Used by Comfy Registry https://comfyregistry.org
+[tool.comfy]
+PublisherId = "fritzprix"
+DisplayName = "ComfyUI-LLM-Utils"
+Icon = ""
