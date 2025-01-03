@@ -69,33 +69,38 @@ class TestWeightedDict(unittest.TestCase):
         # Test selection
         node_select = WeightedDictSelect()
         
-        # Test 1: Basic key selection
-        result = node_select.select_from_dict(combined_dict, "key1")
+        # Test 1: Basic key selection with simple format
+        result = node_select.select_from_dict(combined_dict, "key1", "simple")
         self.assertEqual(len(result), 1)
         self.assertEqual(result[0], "value1")
         
-        result = node_select.select_from_dict(combined_dict, "key2")
-        self.assertEqual(result[0], "value2")
+        # Test 2: Basic key selection with weighted_text format
+        result = node_select.select_from_dict(combined_dict, "key2", "weighted_text")
+        self.assertEqual(result[0], "(value2:2.0)")
         
-        # Test 2: Error handling for invalid key
+        # Test 3: Error handling for invalid key
         with self.assertRaises(ValueError) as context:
-            node_select.select_from_dict(combined_dict, "nonexistent_key")
+            node_select.select_from_dict(combined_dict, "nonexistent_key", "simple")
         self.assertTrue("not found in weighted dictionary" in str(context.exception))
         
-        # Test 3: Empty key handling
+        # Test 4: Empty key handling
         with self.assertRaises(ValueError) as context:
-            node_select.select_from_dict(combined_dict, "")
+            node_select.select_from_dict(combined_dict, "", "simple")
         self.assertTrue("not found in weighted dictionary" in str(context.exception))
         
-        # Test 4: Special characters in keys
+        # Test 5: Special characters in keys
         special_dict = node_input.create_weighted_dict("key-with-hyphens", "special_value", 1.0)[0]
-        result = node_select.select_from_dict(special_dict, "key-with-hyphens")
+        result = node_select.select_from_dict(special_dict, "key-with-hyphens", "simple")
         self.assertEqual(result[0], "special_value")
         
-        # Test 5: Unicode characters in keys and values
+        # Test 6: Unicode characters in keys and values
         unicode_dict = node_input.create_weighted_dict("🔑", "值", 1.0)[0]
-        result = node_select.select_from_dict(unicode_dict, "🔑")
+        result = node_select.select_from_dict(unicode_dict, "🔑", "simple")
         self.assertEqual(result[0], "值")
+
+        # Test 7: Format handling with unicode
+        result = node_select.select_from_dict(unicode_dict, "🔑", "weighted_text")
+        self.assertEqual(result[0], "(值:1.0)")
 
     def test_weighted_dict_select_group(self):
         # Create test dictionaries and combine them
@@ -117,24 +122,15 @@ class TestWeightedDict(unittest.TestCase):
         
         node_select_group = WeightedDictSelectGroup()
 
-        # Test 1: Random selection (original functionality)
+        # Test 1: Basic key selection
         formatted_output, selected_dict = node_select_group.select_group(
-            reformatted_dict, 2, False
-        )
-        self.assertEqual(len(selected_dict), 2)
-        # Verify all selected items are unique
-        selected_values = [item["value"] for item in selected_dict.values()]
-        self.assertEqual(len(selected_values), len(set(selected_values)))
-
-        # Test 2: Specific key selection
-        formatted_output, selected_dict = node_select_group.select_group(
-            reformatted_dict, 2, False, "key1,key2"
+            reformatted_dict, False, "simple", "key1,key2"
         )
         self.assertEqual(len(selected_dict), 2)
         self.assertIn("key1", selected_dict)
         self.assertIn("key2", selected_dict)
 
-        # Test 3: Various input formats
+        # Test 2: Various input formats
         test_cases = [
             ("key1, key2", ["key1", "key2"]),
             ("key1;key2", ["key1", "key2"]),
@@ -146,50 +142,37 @@ class TestWeightedDict(unittest.TestCase):
 
         for input_str, expected_keys in test_cases:
             formatted_output, selected_dict = node_select_group.select_group(
-                reformatted_dict, 2, False, input_str
+                reformatted_dict, False, "simple", input_str
             )
             self.assertEqual(set(selected_dict.keys()), set(expected_keys))
 
-        # Test 4: Duplicates handling
+        # Test 3: Duplicates handling
         formatted_output, selected_dict = node_select_group.select_group(
-            reformatted_dict, 3, True, "key1,key1,key1"
+            reformatted_dict, True, "simple", "key1,key1,key1"
         )
-        self.assertEqual(len(selected_dict), 1)  # Should only have one unique key
-        self.assertIn("key1", selected_dict)
-
+        self.assertEqual(len(selected_dict), 3)  # Should have three entries with duplicates
+        
         formatted_output, selected_dict = node_select_group.select_group(
-            reformatted_dict, 3, False, "key1,key1,key2"
+            reformatted_dict, False, "simple", "key1,key1,key2"
         )
         self.assertEqual(len(selected_dict), 2)  # Should have two unique keys
         self.assertIn("key1", selected_dict)
         self.assertIn("key2", selected_dict)
 
-        # Test 5: Count limiting
-        formatted_output, selected_dict = node_select_group.select_group(
-            reformatted_dict, 1, False, "key1,key2,key3"
-        )
-        self.assertEqual(len(selected_dict), 1)  # Should only select first key
-
-        # Test 6: Error handling
+        # Test 4: Error handling
         with self.assertRaises(ValueError) as context:
             node_select_group.select_group(
-                reformatted_dict, 2, False, "key1,invalid_key"
+                reformatted_dict, False, "simple", "key1,invalid_key"
             )
         self.assertIn("Invalid key", str(context.exception))
 
-        # Test 7: Empty input handling
+        # Test 5: Empty input handling
         for empty_input in ["", None, "   ", ",,,", ";;;"]:
-            formatted_output, selected_dict = node_select_group.select_group(
-                reformatted_dict, 2, False, empty_input
-            )
-            self.assertEqual(
-                len(selected_dict), 
-                2, 
-                f"Expected 2 random selections for empty input '{empty_input}', but got {len(selected_dict)}"
-            )
-            # Verify all selected items are from the original dict
-            for key in selected_dict:
-                self.assertIn(key, reformatted_dict)
+            with self.assertRaises(ValueError) as context:
+                node_select_group.select_group(
+                    reformatted_dict, False, "simple", empty_input
+                )
+            self.assertIn("Selected keys must be provided", str(context.exception))
 
     def test_parse_key_string(self):
         """Test the key string parsing functionality directly"""
@@ -223,13 +206,13 @@ class TestWeightedDict(unittest.TestCase):
 
         # Test simple format
         formatted_output, selected_dict = node_select_group.select_group(
-            reformatted_dict, 2, False, "simple", "key1,key2"
+            reformatted_dict, False, "simple", "key1,key2"
         )
         self.assertEqual(formatted_output, "value1\nvalue2")
 
         # Test weighted_text format
         formatted_output, selected_dict = node_select_group.select_group(
-            reformatted_dict, 2, False, "weighted_text", "key1,key2"
+            reformatted_dict, False, "weighted_text", "key1,key2"
         )
         self.assertEqual(formatted_output, "(value1:0.5)\n(value2:0.3)")
 

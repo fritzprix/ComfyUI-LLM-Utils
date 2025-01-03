@@ -28,6 +28,14 @@ class WeightedDictInput:
 class WeightedDictSelect:
     @classmethod
     def INPUT_TYPES(cls):
+        """Define the input parameters for the node.
+        
+        Returns:
+            dict: Configuration for input parameters:
+                - weighted_dict: Dictionary containing weighted items
+                - key: Key to select from the dictionary
+                - output_format: Format option for the output (simple or weighted_text)
+        """
         return {
             "required": {
                 "weighted_dict": ("DICT",),
@@ -36,27 +44,58 @@ class WeightedDictSelect:
             },
         }
     
-    RETURN_TYPES = ("STRING", )
-    FUNCTION = "select_from_dict"
-    CATEGORY = "utils"
+    RETURN_TYPES = ("STRING", )  # Output will be a string
+    FUNCTION = "select_from_dict"  # Main function to execute
+    CATEGORY = "utils"  # Node category in UI
 
-    def _format_value(self, key, item_data, format_type):
-        """Helper method to format a single value based on format type."""
+    def _format_value(self, key: str, value: str, weight: float, format_type: str) -> str:
+        """Format a value based on the specified format type.
+        
+        Args:
+            key: The dictionary key
+            value: The value to format
+            weight: The weight associated with the value
+            format_type: The desired output format ('simple' or 'weighted_text')
+            
+        Returns:
+            str: Formatted string based on format_type:
+                - simple: just the value
+                - weighted_text: (value:weight)
+        """
         if format_type == "simple":
-            return item_data['value']
+            return value
         elif format_type == "weighted_text":
-            return f"({item_data['value']}:{item_data['weight']})"
-        return item_data['value']  # fallback to simple
+            return f"({value}:{weight})"
+        return value  # fallback to simple
 
     def select_from_dict(self, weighted_dict: Dict[str, Any], key: str, output_format: str = "simple") -> tuple[str]:
-        items = weighted_dict["items"]
+        """Select and format a value from the weighted dictionary.
         
-        # Get value for the specified key
+        Args:
+            weighted_dict: Dictionary containing 'items' and 'weights' subdictionaries
+            key: Key to select from the dictionary
+            output_format: Desired output format ('simple' or 'weighted_text')
+            
+        Returns:
+            tuple[str]: Single-element tuple containing the formatted value
+            
+        Raises:
+            ValueError: If key is not found in the dictionary
+        """
+        # Extract items and weights from the dictionary
+        items = weighted_dict.get("items", {})
+        weights = weighted_dict.get("weights", {})
+        
+        # Validate key exists
         if key not in items:
             raise ValueError(f"Key '{key}' not found in weighted dictionary")
             
-        selected_item = items[key]
-        formatted_value = self._format_value(key, selected_item, output_format)
+        # Get value and weight for the key
+        value = items[key]
+        weight = weights[key]
+        
+        # Format and return the value
+        formatted_value = self._format_value(key, value, weight, output_format)
         return (formatted_value,)
 
 class WeightedDict:
@@ -137,14 +176,20 @@ class WeightedDictToPrompt:
 class WeightedDictSelectGroup:
     @classmethod
     def INPUT_TYPES(cls):
+        """Define the input parameters for the node.
+        
+        Returns:
+            dict: Configuration for input parameters:
+                - weighted_dict: Dictionary containing weighted items
+                - allow_duplicates: Whether to allow duplicate selections
+                - output_format: Format option for the output
+                - selected_keys: String of keys to select
+        """
         return {
             "required": {
                 "weighted_dict": ("DICT",),
-                "count": ("INT", {"default": 3, "min": 1, "max": 10}),
                 "allow_duplicates": ("BOOLEAN", {"default": False}),
                 "output_format": (["simple", "weighted_text"], {"default": "simple"}),
-            },
-            "optional": {
                 "selected_keys": ("STRING", {
                     "multiline": False,
                     "default": "",
@@ -153,81 +198,87 @@ class WeightedDictSelectGroup:
             }
         }
     
-    RETURN_TYPES = ("STRING", "DICT")
-    RETURN_NAMES = ("formatted_selection", "selected_dict")
-    FUNCTION = "select_group"
-    CATEGORY = "utils"
-
-    def _parse_key_string(self, key_string: str) -> list[str]:
-        """Parse a string of keys into a list, handling various formats."""
-        if not key_string or key_string is None:
+    def _parse_key_string(self, key_string):
+        """Parse a string of keys into a list.
+        
+        Args:
+            key_string: String containing comma or semicolon separated keys
+            
+        Returns:
+            list: List of parsed keys
+        """
+        if not key_string or not isinstance(key_string, str):
             return []
             
-        # First split by comma or semicolon
-        parts = []
-        current = []
+        # Split by both comma and semicolon
+        keys = []
+        current_key = []
         in_quotes = False
         
         for char in key_string:
-            if char == '"' or char == "'":
+            if char == '"':
                 in_quotes = not in_quotes
-            elif char in [',', ';'] and not in_quotes:
-                parts.append(''.join(current))
-                current = []
+            elif char in ',;' and not in_quotes:
+                if current_key:
+                    keys.append(''.join(current_key).strip())
+                    current_key = []
             else:
-                current.append(char)
+                current_key.append(char)
                 
-        # Add the last part
-        if current:
-            parts.append(''.join(current))
+        if current_key:
+            keys.append(''.join(current_key).strip())
             
-        # Clean up each part
-        cleaned_keys = []
-        for part in parts:
-            # Remove quotes, whitespace, and skip empty strings
-            key = part.strip(' \'"')
-            if key:  # Only add non-empty keys
-                cleaned_keys.append(key)
-                
-        return cleaned_keys
+        # Filter out empty strings and strip whitespace
+        return [k.strip('"') for k in keys if k.strip()]
 
-    def _format_value(self, key, item_data, format_type):
-        """Helper method to format a single value based on format type."""
-        if format_type == "simple":
-            return item_data['value']
-        elif format_type == "weighted_text":
-            return f"({item_data['value']}:{item_data['weight']})"
-        return item_data['value']  # fallback to simple
-
-    def select_group(self, weighted_dict, count, allow_duplicates=False, output_format="simple", key_string=None):
-        if not key_string or key_string.strip() == "" or all(c in ",; " for c in key_string):
-            # Fall back to random selection when key_string is empty or contains only separators
-            keys = list(weighted_dict.keys())
-            if not allow_duplicates:
-                count = min(count, len(keys))
-            selected_keys = random.sample(keys, count) if not allow_duplicates else [random.choice(keys) for _ in range(count)]
-        else:
-            # Handle specific key selection
-            selected_keys = self._parse_key_string(key_string)
+    def select_group(self, weighted_dict, allow_duplicates=False, output_format="simple", selected_keys=""):
+        """Select a group of items from the weighted dictionary.
+        
+        Args:
+            weighted_dict: Dictionary containing weighted items
+            allow_duplicates: Whether to allow duplicate selections
+            output_format: Desired output format ('simple' or 'weighted_text')
+            selected_keys: String of specific keys to select
             
-            # Validate all keys exist before processing
-            invalid_keys = [k for k in selected_keys if k not in weighted_dict]
-            if invalid_keys:
-                raise ValueError(f"Invalid key(s) found in selection: {', '.join(invalid_keys)}")
+        Returns:
+            tuple: (formatted_output, selected_dict)
+                - formatted_output: String of formatted selections
+                - selected_dict: Dictionary of selected items
+        """
+        if not selected_keys or selected_keys.strip() == "" or all(c in ",; " for c in selected_keys):
+            raise ValueError("Selected keys must be provided")
             
-            if not allow_duplicates:
-                selected_keys = list(dict.fromkeys(selected_keys))
-            selected_keys = selected_keys[:count]
+        # Parse and validate specific keys
+        parsed_keys = self._parse_key_string(selected_keys)
+        invalid_keys = [k for k in parsed_keys if k not in weighted_dict]
+        if invalid_keys:
+            raise ValueError(f"Invalid key(s) found in selection: {', '.join(invalid_keys)}")
+        
+        # Handle duplicates
+        if not allow_duplicates:
+            seen = set()
+            parsed_keys = [k for k in parsed_keys if not (k in seen or seen.add(k))]
 
-        selected_dict = {k: weighted_dict[k] for k in selected_keys}
+        # Create selected dictionary maintaining order
+        selected_dict = {}
+        for i, key in enumerate(parsed_keys):
+            # For duplicates, create unique keys by appending an index
+            if allow_duplicates and key in selected_dict:
+                new_key = f"{key}_{i}"
+                selected_dict[new_key] = weighted_dict[key]
+            else:
+                selected_dict[key] = weighted_dict[key]
         
         # Format output
-        formatted_output = ""
+        formatted_output = []
         for key in selected_dict:
-            formatted_value = self._format_value(key, selected_dict[key], output_format)
-            formatted_output += f"{formatted_value}\n"
+            item_data = selected_dict[key]
+            if output_format == "simple":
+                formatted_output.append(item_data['value'])
+            else:  # weighted_text
+                formatted_output.append(f"({item_data['value']}:{item_data['weight']})")
         
-        return formatted_output.strip(), selected_dict
+        return "\n".join(formatted_output), selected_dict
 
 class WeightedDictConcat:
     @classmethod
