@@ -2,7 +2,7 @@ import unittest
 import sys
 import os
 
-from .weighted_dict import WeightedDictInput, WeightedDictSelect, WeightedDictConcat, WeightedDictSelectGroup
+from nodes.weighted_dict import WeightedDictInput, WeightedDictSelect, WeightedDictConcat, WeightedDictSelectGroup
 
 # Mock ComfyUI's dependencies if needed
 try:
