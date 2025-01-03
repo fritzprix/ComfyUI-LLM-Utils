@@ -14,7 +14,7 @@ class WeightedDictInput:
     
     RETURN_TYPES = ("DICT",)
     FUNCTION = "create_weighted_dict"
-    CATEGORY = "utils"
+    CATEGORY = "llm-utils"
 
     def create_weighted_dict(self, key, value, weight) -> tuple[Dict[str, Any]]:
         # Create the weighted dictionary
@@ -46,7 +46,7 @@ class WeightedDictSelect:
     
     RETURN_TYPES = ("STRING", )  # Output will be a string
     FUNCTION = "select_from_dict"  # Main function to execute
-    CATEGORY = "utils"  # Node category in UI
+    CATEGORY = "llm-utils"  # Node category in UI
 
     def _format_value(self, key: str, value: str, weight: float, format_type: str) -> str:
         """Format a value based on the specified format type.
@@ -109,7 +109,7 @@ class WeightedDict:
     
     RETURN_TYPES = ("DICT",)
     FUNCTION = "reformat_dict"
-    CATEGORY = "utils"
+    CATEGORY = "llm-utils"
 
     def reformat_dict(self, weighted_dict: Dict[str, Any]) -> tuple[Dict[str, Any]]:
         items = weighted_dict["items"]
@@ -140,7 +140,7 @@ class WeightedDictToPrompt:
     
     RETURN_TYPES = ("STRING",)
     FUNCTION = "render_prompt"
-    CATEGORY = "utils"
+    CATEGORY = "llm-utils"
 
     def render_prompt(self, template: str, weighted_dict: Dict[str, Any]) -> tuple[str]:
         # Start with the template
@@ -176,7 +176,7 @@ class WeightedDictToPrompt:
 class WeightedDictSelectGroup:
     RETURN_TYPES = ("STRING", "DICT")
     FUNCTION = "select_group"
-    CATEGORY = "dictionary"
+    CATEGORY = "llm-utils"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -301,7 +301,7 @@ class WeightedDictConcat:
     
     RETURN_TYPES = ("DICT",)
     FUNCTION = "concat_dicts"
-    CATEGORY = "utils"
+    CATEGORY = "llm-utils"
 
     def concat_dicts(self, dict1, dict2=None, dict3=None, dict4=None, dict5=None) -> tuple[Dict[str, Any]]:
         # Start with the first dictionary
